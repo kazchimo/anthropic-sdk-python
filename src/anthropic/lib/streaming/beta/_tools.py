@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar, Callable, cast
 from typing_extensions import Iterator, Awaitable, AsyncIterator, override, assert_never
 
 import httpx
+from jiter import from_json
 
 from ...._utils import consume_sync_iterator, consume_async_iterator
 from ...._models import construct_type
@@ -465,18 +466,11 @@ def accumulate_event(
         if content.type == "text" and event.delta.type == "text_delta":
             content.text += event.delta.text
         elif content.type == "tool_use" and event.delta.type == "input_json_delta":
-            try:
-                from pydantic_core import from_json
-            except ImportError as exc:
-                raise RuntimeError(
-                    "Could not import `pydantic_core.from_json` which is required for tool use accumulation, do you have pydantic >= 2.7 installed?"
-                ) from exc
-
             # we need to keep track of the raw JSON string as well so that we can
             # re-parse it for each delta, for now we just store it as an untyped
             # property on the snapshot
-            json_buf = cast(str, getattr(content, JSON_BUF_PROPERTY, ""))
-            json_buf += event.delta.partial_json
+            json_buf = cast(bytes, getattr(content, JSON_BUF_PROPERTY, b""))
+            json_buf += bytes(event.delta.partial_json, "utf-8")
 
             if json_buf:
                 content.input = from_json(json_buf, allow_partial=True)
